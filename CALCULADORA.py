@@ -188,3 +188,15 @@ else:
     st.success(f"Preço sugerido de venda: R$ {preco_venda:.2f}")
 
 lucro_desejado = st.number_input("Digite o lucro desejado: R$ ", min_value=0.0, step=0.01, key="lucro_desejado")
+
+# Adiciona o lucro desejado ao cálculo do preço sugerido
+if custo_produto == 0.0:
+    preco_venda = 0.0
+    st.warning("Custo do produto não preenchido. Preço sugerido de venda: R$ 0,00")
+elif taxas_percentuais < 1:
+    preco_venda = (custo_total + lucro_desejado) / (1 - taxas_percentuais)
+    st.success(f"Preço sugerido de venda (com lucro desejado): R$ {preco_venda:.2f}")
+else:
+    preco_venda = custo_total + lucro_desejado  # Apenas a soma real dos custos + lucro
+    st.warning("A soma das taxas percentuais é igual ou maior que 100%. O preço sugerido será apenas a soma dos custos mais o lucro desejado.")
+    st.success(f"Preço sugerido de venda (com lucro desejado): R$ {preco_venda:.2f}")
