@@ -58,7 +58,7 @@ taxas_marketplaces = {
     'olist': 0.23
 }
 taxas_fixas = {
-    'shopee': 4.00
+    'shopee': 6.00
 }
 
 imposto = 0.10
@@ -147,21 +147,23 @@ st.write(f"Soma total dos custos fixos: R$ {total_fixo:.2f}")
 st.write(f'Soma total dos custos: R$ {total_variavel + total_fixo:.2f}')
 
 # Novo cálculo: custo operacional como percentual do faturamento
-# Exemplo: se custos totais = 1000 e faturamento esperado = 10000, percentual = 10%
-# Aqui, você pode pedir ao usuário o faturamento mensal esperado:
+# Exemplo: se custos totais = 1000 e faturamento esperado = 10000, percentual = 0.10 (10%)
+# Pergunta o faturamento mensal esperado e converte para percentual
 faturamento_esperado = st.number_input("Digite o faturamento mensal esperado: R$ ", min_value=0.01, step=0.01, key="faturamento_esperado")
-custo_operacional_percentual = (total_variavel + total_fixo) / faturamento_esperado
+if faturamento_esperado > 0:
+    custo_operacional_percentual = (total_variavel + total_fixo) / faturamento_esperado
+else:
+    custo_operacional_percentual = 0.0
 
+# Limita a uma porcentagem sensata para exibição (em %) mas mantém o percentual original para cálculos
 porcentagem_operacional = min(custo_operacional_percentual * 100, 500)
-st.write(f'Porcentagem convertida custo operacional: {porcentagem_operacional:.0f}%')
+st.write(f'Porcentagem convertida custo operacional: {porcentagem_operacional:.2f}%')
 
-# Novo: valor simbólico baseado nos 3 primeiros dígitos da porcentagem
-porcentagem_str = f"{int(porcentagem_operacional):03d}"  # Garante pelo menos 3 dígitos
-valor_simbolico = float(porcentagem_str[:3]) / 100
-st.write(f"Valor simbólico do custo operacional: {valor_simbolico:.2f}")
-
-# Use valor_simbolico como custo operacional
-custo_operacional = valor_simbolico
+# NÃO convertemos para um valor simbólico absoluto aqui para evitar cálculos enganosos.
+# O custo operacional será tratado como percentual aplicado sobre o preço de venda
+# ao computar as taxas percentuais. Para evitar dupla contagem, deixamos o custo operacional
+# absoluto (inserido em custo_total) em 0. Ele será mostrado depois em R$ com base no preço final.
+custo_operacional = 0.0
 
 custo_produto = st.number_input("Digite o custo do produto: R$ ", min_value=0.0, step=0.01, key="custo_produto")
 custo_embalagem = st.number_input("Digite o custo de embalagem: R$ ", min_value=0.0, step=0.01, key="custo_embalagem")
@@ -170,9 +172,11 @@ adicional = st.number_input("Digite o valor adicional: R$ ", min_value=0.0, step
 
 # Cálculo do custo total do produto
 custo_base = custo_produto + custo_frete + custo_embalagem + adicional
-custo_total = custo_base + custo_operacional + difal
+custo_total = custo_base
 
 # Soma das taxas percentuais (agora incluindo custo operacional percentual)
+# Observação: custo_operacional_percentual é um percentual do faturamento e deve ser aplicado
+# sobre o preço de venda, por isso é incluído nas taxas percentuais.
 taxas_percentuais = taxa_plataforma + imposto + (markup_produto / 100) + custo_operacional_percentual
 
 # Preço de venda sugerido
@@ -200,3 +204,47 @@ else:
     preco_venda = custo_total + lucro_desejado  # Apenas a soma real dos custos + lucro
     st.warning("A soma das taxas percentuais é igual ou maior que 100%. O preço sugerido será apenas a soma dos custos mais o lucro desejado.")
     st.success(f"Preço sugerido de venda (com lucro desejado): R$ {preco_venda:.2f}")
+
+# Calcula e exibe o faturamento e o lucro em valor absoluto (R$)
+valor_faturamento = preco_venda
+
+# Calcula as taxas em R$ aplicadas sobre o preco_venda (taxas percentuais)
+taxas_em_reais = preco_venda * (taxa_plataforma + imposto + (markup_produto / 100)) if preco_venda else 0.0
+
+# Custo operacional em R$ por venda
+operacional_em_reais = preco_venda * custo_operacional_percentual
+
+# Difal é armazenado como percentual (ex: 0.04). Aplicamos sobre preco_venda
+difal_em_reais = preco_venda * difal if preco_venda else 0.0
+
+# Taxa fixa da plataforma (se houver)
+plataforma_fixa_em_reais = taxas_fixas.get(plataforma, 0.0)
+
+# Soma total de taxas em R$ (percentuais + fixa + difal)
+taxas_totais_em_reais = taxas_em_reais + plataforma_fixa_em_reais + difal_em_reais
+
+# Custos diretos por venda: custo_base + operacional (em reais)
+custos_diretos_por_venda = custo_base + operacional_em_reais
+
+# Valor do lucro considerando todas as deduções (custos diretos + taxas totais)
+valor_lucro = preco_venda - (custos_diretos_por_venda + taxas_totais_em_reais)
+
+st.write(f"\nValor faturamento (o que você recebe por venda): R$ {valor_faturamento:.2f}")
+st.write(f"Custo direto por venda (R$): R$ {custo_base:.2f}")
+st.write(f"Custo operacional por venda (R$): R$ {operacional_em_reais:.2f}")
+st.write(f"Taxa plataforma (percentual) em R$: R$ {preco_venda * taxa_plataforma:.2f}")
+st.write(f"Taxa imposto (percentual) em R$: R$ {preco_venda * imposto:.2f}")
+st.write(f"Markup aplicado (R$): R$ {preco_venda * (markup_produto / 100):.2f}")
+st.write(f"Difal (R$): R$ {difal_em_reais:.2f}")
+st.write(f"Taxa fixa da plataforma (R$): R$ {plataforma_fixa_em_reais:.2f}")
+st.write(f"Total de taxas e encargos (R$): R$ {taxas_totais_em_reais:.2f}")
+
+if preco_venda > 0:
+    margem_percentual = (valor_lucro / preco_venda) * 100
+else:
+    margem_percentual = 0.0
+
+if valor_lucro >= 0:
+    st.success(f"Valor lucro (o que você ganha por venda): R$ {valor_lucro:.2f} — Margem: {margem_percentual:.2f}%")
+else:
+    st.error(f"Valor lucro (resultado negativo — prejuízo) por venda: R$ {valor_lucro:.2f} — Margem: {margem_percentual:.2f}%")
