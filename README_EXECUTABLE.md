@@ -24,3 +24,16 @@ Notas:
 - PyInstaller empacota o Python e dependências; confira alertas sobre antivírus.
 - Para incluir arquivos JSON (custos JSON), adicione a opção `--add-data "custos_variaveis.json;." --add-data "custos_fixos.json;."` ao comando PyInstaller.
 - Teste o executável em uma máquina limpa antes de distribuir.
+
+Gerar executável da versão GUI (PySimpleGUI)
+
+1. Instale dependências (inclui PySimpleGUI):
+
+   pip install -r requirements.txt
+
+2. Gere o executável do `gui_app.py`:
+
+   pyinstaller --onefile --name CalculadoraGUI gui_app.py --add-data "custos_variaveis.json;." --add-data "custos_fixos.json;."
+
+3. O executável ficará em `dist\\CalculadoraGUI.exe`.
+
