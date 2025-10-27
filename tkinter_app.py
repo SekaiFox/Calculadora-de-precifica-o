@@ -304,6 +304,12 @@ class CalculadoraApp:
                 for k, v in res.get('breakdown', {}).items():
                     writer.writerow([k, f"{v}"])
             messagebox.showinfo("Exportar CSV", f"Resumo salvo em: {path}")
+            # Tenta abrir o arquivo salvo (Windows)
+            try:
+                if os.name == 'nt':
+                    os.startfile(path)
+            except Exception:
+                pass
         except Exception as e:
             messagebox.showerror("Exportar CSV", f"Erro ao salvar CSV: {e}")
 
@@ -462,6 +468,12 @@ class CalculadoraApp:
             with open(path, 'wb') as f:
                 f.write(buf.read())
             messagebox.showinfo("Exportar PDF", f"Resumo PDF salvo em: {path}")
+            # Tenta abrir o PDF salvo (Windows)
+            try:
+                if os.name == 'nt':
+                    os.startfile(path)
+            except Exception:
+                pass
         except Exception as e:
             messagebox.showerror("Exportar PDF", f"Erro ao gerar PDF: {e}")
 
