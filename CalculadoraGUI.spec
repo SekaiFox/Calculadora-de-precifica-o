@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['gui_app.py'],
+    ['tkinter_app.py'],
     pathex=[],
     binaries=[],
     datas=[('custos_variaveis.json', '.'), ('custos_fixos.json', '.')],

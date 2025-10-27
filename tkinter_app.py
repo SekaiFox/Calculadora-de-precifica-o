@@ -2,6 +2,7 @@ import json
 import os
 import tkinter as tk
 from tkinter import ttk, messagebox
+from ttkthemes import ThemedTk
 from precificacao import compute_pricing, carregar_totais_custos, TAXAS_MARKETPLACES
 
 class CalculadoraApp:
@@ -10,31 +11,92 @@ class CalculadoraApp:
         self.root.title("Calculadora de Precificação")
         self.root.geometry("1200x800")
         
-        # Estilo
-        style = ttk.Style()
-        style.configure("Title.TLabel", font=("Helvetica", 16, "bold"))
-        style.configure("Header.TLabel", font=("Helvetica", 12, "bold"))
+        # Configurar tema escuro
+        self.root.configure(bg='#1e1e1e')
+        style = ttk.Style(self.root)
+        style.theme_use('equilux')  # Tema escuro moderno
         
-        # Frame principal
-        main_frame = ttk.Frame(root, padding="10")
+        # Configurar estilos personalizados
+        style.configure("Title.TLabel", 
+                       font=("Segoe UI", 24, "bold"),
+                       foreground='#ffffff',
+                       background='#1e1e1e')
+        
+        style.configure("Header.TLabel", 
+                       font=("Segoe UI", 14, "bold"),
+                       foreground='#ffffff',
+                       background='#1e1e1e')
+        
+        style.configure("TLabel",
+                       font=("Segoe UI", 10),
+                       foreground='#ffffff',
+                       background='#1e1e1e')
+        
+        style.configure("TEntry",
+                       fieldbackground='#2d2d2d',
+                       foreground='#ffffff',
+                       insertcolor='#ffffff')
+        
+        style.configure("TButton",
+                       font=("Segoe UI", 10),
+                       background='#0078d4',
+                       foreground='#ffffff')
+        
+        style.map("TButton",
+                 background=[('active', '#1e88e5')],
+                 foreground=[('active', '#ffffff')])
+                 
+        style.configure("TFrame",
+                       background='#1e1e1e')
+                       
+        style.configure("TLabelframe",
+                       background='#1e1e1e',
+                       foreground='#ffffff')
+                       
+        style.configure("TLabelframe.Label",
+                       font=("Segoe UI", 11, "bold"),
+                       foreground='#ffffff',
+                       background='#1e1e1e')
+        
+        # Frame principal com gradiente
+        main_frame = ttk.Frame(root, padding="20")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        main_frame.configure(style="TFrame")
         
-        # Título
-        title = ttk.Label(main_frame, text="Calculadora de Precificação", style="Title.TLabel")
-        title.grid(row=0, column=0, columnspan=3, pady=10)
+        # Configure grid weights
+        root.grid_rowconfigure(0, weight=1)
+        root.grid_columnconfigure(0, weight=1)
+        main_frame.grid_columnconfigure(1, weight=1)
+        main_frame.grid_columnconfigure(2, weight=1)
         
-        # Frames
-        config_frame = ttk.LabelFrame(main_frame, text="Configurações", padding="5")
-        config_frame.grid(row=1, column=0, padx=5, pady=5, sticky=(tk.W, tk.E, tk.N, tk.S))
+        # Título com ícone
+        title_frame = ttk.Frame(main_frame, style="TFrame")
+        title_frame.grid(row=0, column=0, columnspan=3, pady=(0, 20))
         
-        product_frame = ttk.LabelFrame(main_frame, text="Dados do Produto", padding="5")
-        product_frame.grid(row=2, column=0, padx=5, pady=5, sticky=(tk.W, tk.E, tk.N, tk.S))
+        title = ttk.Label(title_frame, text="🧮 Calculadora de Precificação", style="Title.TLabel")
+        title.pack(pady=(10, 20))
         
-        costs_frame = ttk.LabelFrame(main_frame, text="Custos Operacionais", padding="5")
-        costs_frame.grid(row=1, column=1, rowspan=2, padx=5, pady=5, sticky=(tk.W, tk.E, tk.N, tk.S))
+        # Container para os frames principais
+        content_frame = ttk.Frame(main_frame, style="TFrame")
+        content_frame.grid(row=1, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S))
+        content_frame.grid_columnconfigure(1, weight=1)
         
-        result_frame = ttk.LabelFrame(main_frame, text="Resultados", padding="5")
-        result_frame.grid(row=1, column=2, rowspan=2, padx=5, pady=5, sticky=(tk.W, tk.E, tk.N, tk.S))
+        # Frames com bordas arredondadas e espaçamento
+        config_frame = ttk.LabelFrame(content_frame, text="⚙️ Configurações", padding="15")
+        config_frame.grid(row=0, column=0, padx=10, pady=5, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        product_frame = ttk.LabelFrame(content_frame, text="📦 Dados do Produto", padding="15")
+        product_frame.grid(row=1, column=0, padx=10, pady=5, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        middle_frame = ttk.Frame(content_frame, style="TFrame")
+        middle_frame.grid(row=0, column=1, rowspan=2, padx=10, sticky=(tk.W, tk.E, tk.N, tk.S))
+        middle_frame.grid_rowconfigure(1, weight=1)
+        
+        costs_frame = ttk.LabelFrame(middle_frame, text="💰 Custos Operacionais", padding="15")
+        costs_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        result_frame = ttk.LabelFrame(middle_frame, text="📊 Resultados", padding="15")
+        result_frame.grid(row=1, column=0, pady=(10, 0), sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # Configurações
         ttk.Label(config_frame, text="Plataforma:").grid(row=0, column=0, padx=5, pady=2)
@@ -74,9 +136,20 @@ class CalculadoraApp:
         # Botão calcular
         ttk.Button(product_frame, text="Calcular", command=self.calculate).grid(row=5, column=0, columnspan=2, pady=10)
         
-        # Área de resultados (Text widget com fonte monoespaçada para alinhamento)
-        self.result_text = tk.Text(result_frame, width=50, height=20, font=("Courier", 10))
-        self.result_text.grid(row=0, column=0, padx=5, pady=5)
+        # Área de resultados com estilo moderno
+        self.result_text = tk.Text(result_frame, 
+                                 width=50, 
+                                 height=20, 
+                                 font=("Consolas", 10),
+                                 bg='#2d2d2d',
+                                 fg='#ffffff',
+                                 insertbackground='#ffffff',
+                                 selectbackground='#0078d4',
+                                 selectforeground='#ffffff',
+                                 relief='flat',
+                                 padx=10,
+                                 pady=10)
+        self.result_text.grid(row=0, column=0, padx=5, pady=5, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # Carregar custos
         self.load_costs()
@@ -126,8 +199,33 @@ class CalculadoraApp:
             messagebox.showerror("Erro", f"Erro ao calcular: {str(e)}")
 
 def main():
-    root = tk.Tk()
+    try:
+        from ttkthemes import ThemedTk
+        root = ThemedTk(theme="equilux")
+    except ImportError:
+        root = tk.Tk()
+        print("Aviso: ttkthemes não encontrado, usando tema padrão")
+    
+    # Configurar DPI awareness para melhor renderização em telas de alta resolução
+    try:
+        from ctypes import windll
+        windll.shcore.SetProcessDpiAwareness(1)
+    except:
+        pass
+
     app = CalculadoraApp(root)
+    
+    # Configurar tamanho inicial e posição
+    root.geometry("1200x800")  # Tamanho inicial
+    root.minsize(1000, 600)     # Tamanho mínimo
+    
+    # Centralizar na tela
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    x = (screen_width - 1200) // 2
+    y = (screen_height - 800) // 2
+    root.geometry(f"+{x}+{y}")
+    
     root.mainloop()
 
 if __name__ == "__main__":
