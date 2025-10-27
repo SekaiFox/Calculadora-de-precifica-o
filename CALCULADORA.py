@@ -1,6 +1,14 @@
 import json
 import os
+import io
+import csv
+import pandas as pd
 import streamlit as st
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from PIL import Image
+import os
 from precificacao import compute_pricing, carregar_totais_custos, TAXAS_MARKETPLACES, TAXAS_FIXAS
 
 
@@ -32,11 +40,16 @@ difal_estados = {
 
 with st.sidebar.form(key='config_form'):
     st.header('Configurações')
-    markup_produto = st.number_input("Markup do produto (%)", min_value=0.0, value=20.0, step=0.1, key='markup_produto')
+    usar_markup = st.checkbox('Usar markup (%)', value=True, key='usar_markup')
+    markup_produto = st.number_input("Markup do produto (%)", min_value=0.0, value=20.0, step=0.1, key='markup_produto', disabled=not usar_markup)
     plataforma = st.selectbox("Plataforma", list(TAXAS_MARKETPLACES.keys()), index=0, key='plataforma')
+    ml_listing = None
+    if plataforma == 'mercado_livre':
+        ml_listing = st.selectbox('Tipo de anúncio (Mercado Livre)', ['classico', 'premium'], index=0, key='ml_listing')
     imposto = st.number_input("Alíquota de imposto (ex: 0.10 = 10%)", min_value=0.0, value=0.10, step=0.01, key='imposto')
     estado_destino = st.selectbox("Estado destino", ['0'] + list(difal_estados.keys()), key='estado_destino')
     faturamento_esperado = st.number_input("Faturamento mensal esperado (R$)", min_value=0.01, value=10000.0, step=0.01, key='faturamento_esperado')
+    faturamento_meta = st.number_input("Faturamento mensal desejado (R$)", min_value=0.0, value=10000.0, step=0.01, key='faturamento_meta')
     submit_config = st.form_submit_button('Aplicar')
 
     if estado_destino != '0':
@@ -51,6 +64,11 @@ total_fixo = totais.get('total_fixo', 0.0)
 
 st.write(f"Soma custos variáveis: R$ {total_variavel:.2f} — Fixos: R$ {total_fixo:.2f}")
 
+# show logo if exists
+logo_path = os.path.join(os.getcwd(), 'logo.png')
+if os.path.exists(logo_path):
+    st.image(logo_path, width=200)
+
 # Main layout: 3 columns (Inputs | Custos detalhados | Resultado)
 col1, col2, col3 = st.columns([3, 3, 4])
 
@@ -60,7 +78,7 @@ with col1:
     custo_embalagem = st.number_input("Custo embalagem (R$)", min_value=0.0, value=0.0, step=0.01, key='custo_embalagem')
     custo_frete = st.number_input("Custo frete (R$)", min_value=0.0, value=0.0, step=0.01, key='custo_frete')
     adicional = st.number_input("Adicional (R$)", min_value=0.0, value=0.0, step=0.01, key='adicional')
-    lucro_desejado = st.number_input("Lucro desejado (R$)", min_value=0.0, value=0.0, step=0.01, key='lucro_desejado')
+    lucro_desejado = st.number_input("Lucro desejado (R$)", min_value=0.0, value=0.0, step=0.01, key='lucro_desejado', disabled=usar_markup)
 
     st.markdown('---')
     if st.button('Calcular preço'):
@@ -76,6 +94,8 @@ with col1:
             custo_frete=custo_frete,
             adicional=adicional,
             lucro_desejado=lucro_desejado,
+            ml_listing=ml_listing,
+            use_markup=usar_markup,
             total_variavel=total_variavel,
             total_fixo=total_fixo,
         )
@@ -119,6 +139,173 @@ with col3:
         st.metric('Preço sugerido', f"R$ {resultado['preco_venda']:.2f}")
         st.write(f"Valor faturamento: R$ {resultado['valor_faturamento']:.2f}")
         st.write(f"Valor lucro: R$ {resultado['valor_lucro']:.2f} — Margem: {resultado['margem_percentual']:.2f}%")
+        # Opção: mostrar fluxo por pedido (faturamento - custos = lucro líquido)
+        mostrar_fluxo = st.checkbox('Mostrar fluxo por pedido (Faturamento - Custos = Lucro líquido)', value=False)
+        if mostrar_fluxo:
+            # custos totais por venda = custos diretos por venda + taxas totais em reais
+            custos_totais_por_venda = resultado.get('custos_diretos_por_venda', 0.0) + resultado.get('taxas_totais_em_reais', 0.0)
+            faturamento = resultado.get('preco_venda', 0.0)
+            lucro_liquido = resultado.get('valor_lucro', 0.0)
+            st.markdown('**Fluxo por pedido**')
+            st.write(f"Faturamento (preço de venda): R$ {faturamento:.2f}")
+            st.write(f"Custos totais (diretos + taxas): R$ {custos_totais_por_venda:.2f}")
+            st.write(f"Lucro líquido: R$ {lucro_liquido:.2f}")
+            st.write(f"\nEquação: R$ {faturamento:.2f} - R$ {custos_totais_por_venda:.2f} = R$ {lucro_liquido:.2f}")
+        # Visualização do Lucro Real (métrica + gráfico)
+        custos_totais_por_venda = resultado.get('custos_diretos_por_venda', 0.0) + resultado.get('taxas_totais_em_reais', 0.0)
+        faturamento = resultado.get('preco_venda', 0.0)
+        lucro_liquido = resultado.get('valor_lucro', 0.0)
+        st.markdown('---')
+        st.subheader('Lucro real por pedido')
+        # métrica destacada
+        st.metric(label='Lucro líquido (R$)', value=f"R$ {lucro_liquido:.2f}", delta=f"{resultado.get('margem_percentual',0.0):.2f}%")
+        # gráfico simples comparando faturamento / custos / lucro
+        df = pd.DataFrame({'Valor': [faturamento, custos_totais_por_venda, lucro_liquido]}, index=['Faturamento', 'Custos', 'Lucro'])
+        st.bar_chart(df)
+        # Export buttons (CSV / PDF)
+        col_a, col_b = st.columns(2)
+
+        def build_csv_bytes(res):
+            s = io.StringIO()
+            writer = csv.writer(s, delimiter=',')
+            writer.writerow(['campo', 'valor'])
+            writer.writerow(['preco_venda', f"{res.get('preco_venda', 0.0):.2f}"])
+            writer.writerow(['valor_faturamento', f"{res.get('valor_faturamento', 0.0):.2f}"])
+            writer.writerow(['valor_lucro', f"{res.get('valor_lucro', 0.0):.2f}"])
+            writer.writerow(['margem_percentual', f"{res.get('margem_percentual', 0.0):.2f}"])
+            writer.writerow([])
+            writer.writerow(['detalhamento', 'valor'])
+            for k, v in res.get('breakdown', {}).items():
+                writer.writerow([k, f"{v}"])
+            return s.getvalue().encode('utf-8')
+
+        csv_bytes = build_csv_bytes(resultado)
+        col_a.download_button('Exportar resumo CSV', data=csv_bytes, file_name='resumo_precificacao.csv', mime='text/csv')
+
+        # PDF export (optional - requires reportlab)
+        try:
+            from reportlab.lib.pagesizes import letter
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer
+            from reportlab.lib import colors
+            from reportlab.lib.styles import getSampleStyleSheet
+
+            def build_pdf_bytes(res):
+                buf = io.BytesIO()
+                doc = SimpleDocTemplate(buf, pagesize=letter, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
+                styles = getSampleStyleSheet()
+                story = []
+                # Header with optional logo and title
+                logo_width = 80
+                title = Paragraph('<b>Resumo de Precificação</b>', styles['Title'])
+                header_cells = []
+                logo_path = os.path.join(os.getcwd(), 'logo.png')
+                if os.path.exists(logo_path):
+                    try:
+                        img = Image.open(logo_path)
+                        aspect = img.height / img.width
+                        img_w = logo_width
+                        img_h = int(img_w * aspect)
+                        img_buf = io.BytesIO()
+                        img.resize((img_w, img_h)).save(img_buf, format='PNG')
+                        img_buf.seek(0)
+                        from reportlab.platypus import Image as RLImage
+                        rl_img = RLImage(img_buf, width=img_w, height=img_h)
+                        header_cells = [[rl_img, title]]
+                    except Exception:
+                        header_cells = [[Paragraph('', styles['Normal']), title]]
+                else:
+                    header_cells = [[Paragraph('', styles['Normal']), title]]
+                header_table = Table(header_cells, colWidths=[logo_width, 400])
+                header_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0,0), (0,0), colors.HexColor('#0078d4')),
+                    ('TEXTCOLOR', (0,0), (0,0), colors.white),
+                    ('BACKGROUND', (1,0), (1,0), colors.HexColor('#1e1e1e')),
+                    ('LEFTPADDING', (0,0), (-1,-1), 8),
+                    ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ]))
+                story.append(header_table)
+                story.append(Spacer(1, 12))
+
+                # Main metrics
+                data = [['Campo', 'Valor']]
+                data.append(['Preço sugerido', f"R$ {res.get('preco_venda', 0.0):.2f}"])
+                data.append(['Valor faturamento', f"R$ {res.get('valor_faturamento', 0.0):.2f}"])
+                data.append(['Valor lucro', f"R$ {res.get('valor_lucro', 0.0):.2f}"])
+                data.append(['Margem', f"{res.get('margem_percentual', 0.0):.2f}%"]) 
+                tbl = Table(data, colWidths=[220, 180])
+                tbl.setStyle(TableStyle([
+                    ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2d2d2d')),
+                    ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+                    ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+                    ('ALIGN', (1,1), (-1,-1), 'RIGHT'),
+                    ('INNERGRID', (0,0), (-1,-1), 0.25, colors.grey),
+                    ('BOX', (0,0), (-1,-1), 0.5, colors.grey),
+                ]))
+                story.append(tbl)
+                story.append(Spacer(1, 12))
+
+                # Breakdown table
+                bd = [['Quebra', 'Valor']]
+                for k, v in res.get('breakdown', {}).items():
+                    bd.append([str(k), f"R$ {v}"])
+                bd_tbl = Table(bd, colWidths=[220, 180])
+                bd_tbl.setStyle(TableStyle([
+                    ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2d2d2d')),
+                    ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+                    ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+                    ('INNERGRID', (0,0), (-1,-1), 0.25, colors.grey),
+                    ('BOX', (0,0), (-1,-1), 0.5, colors.grey),
+                ]))
+                story.append(bd_tbl)
+
+                # Add matplotlib charts: composition and units needed
+                try:
+                    custos = res.get('custos_diretos_por_venda', 0.0) + res.get('taxas_totais_em_reais', 0.0)
+                    lucro = res.get('valor_lucro', 0.0)
+                    labels = ['Custos', 'Lucro']
+                    vals = [max(custos, 0.0), max(lucro, 0.0)]
+                    fig1, ax1 = plt.subplots(figsize=(4, 3))
+                    ax1.pie(vals, labels=labels, autopct='%1.1f%%', colors=['#4c72b0', '#dd8452'])
+                    ax1.set_title('Composição por venda')
+                    buf1 = io.BytesIO()
+                    fig1.tight_layout()
+                    fig1.savefig(buf1, format='png', dpi=150)
+                    plt.close(fig1)
+                    buf1.seek(0)
+                    from reportlab.platypus import Image as RLImage
+                    story.append(RLImage(buf1, width=360, height=270))
+
+                    # units needed
+                    try:
+                        faturamento_meta_local = float(st.session_state.get('faturamento_meta', faturamento_esperado))
+                        preco_unit = res.get('preco_venda', 0.0)
+                        unidades = faturamento_meta_local / preco_unit if preco_unit > 0 else 0
+                        fig2, ax2 = plt.subplots(figsize=(6, 2.5))
+                        ax2.bar(['Unidades necessárias'], [unidades], color='#2ca02c')
+                        ax2.set_ylabel('Unidades')
+                        ax2.set_title('Unidades aproximadas por mês para meta de faturamento')
+                        for i, v in enumerate([unidades]):
+                            ax2.text(i, v + max(v * 0.01, 1), f"{v:.1f}", ha='center')
+                        buf2 = io.BytesIO()
+                        fig2.tight_layout()
+                        fig2.savefig(buf2, format='png', dpi=150)
+                        plt.close(fig2)
+                        buf2.seek(0)
+                        story.append(Spacer(1, 12))
+                        story.append(RLImage(buf2, width=400, height=140))
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+
+                doc.build(story)
+                buf.seek(0)
+                return buf.getvalue()
+
+            pdf_bytes = build_pdf_bytes(resultado)
+            col_b.download_button('Exportar resumo PDF', data=pdf_bytes, file_name='resumo_precificacao.pdf', mime='application/pdf')
+        except Exception:
+            col_b.info('Para habilitar exportação em PDF, instale: pip install reportlab')
         st.markdown('**Quebra de custos e taxas**')
         for k, v in resultado['breakdown'].items():
             st.write(f"{k}: R$ {v}")
