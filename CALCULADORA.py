@@ -24,7 +24,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title('🧮 Calculadora de Precificação — Organizada')
+st.title('🧮 Calculadora de Precificação')
 
 # Sidebar: configurações globais
 # Dicionário de difal por estado (exemplo, ajuste os valores conforme necessário)
