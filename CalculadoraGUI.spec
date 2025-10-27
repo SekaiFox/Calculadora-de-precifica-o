@@ -5,7 +5,7 @@ a = Analysis(
     ['tkinter_app.py'],
     pathex=[],
     binaries=[],
-    datas=[('custos_variaveis.json', '.'), ('custos_fixos.json', '.')],
+    datas=[('logo.png', '.'), ('custos_variaveis.json', '.'), ('custos_fixos.json', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

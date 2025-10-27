@@ -1,7 +1,7 @@
 import json
 import os
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox, filedialog, simpledialog
 from ttkthemes import ThemedTk
 import csv
 import io
@@ -184,14 +184,23 @@ class CalculadoraApp:
         btn_frame.grid(row=1, column=0, pady=(8,0), sticky=(tk.W))
         ttk.Button(btn_frame, text="Exportar CSV", command=self.export_csv).grid(row=0, column=0, padx=(0,8))
         ttk.Button(btn_frame, text="Exportar PDF", command=self.export_pdf).grid(row=0, column=1)
-        # Botão para carregar logo (opcional)
-        ttk.Button(btn_frame, text="Selecionar logo", command=self.select_logo).grid(row=0, column=2, padx=(8,0))
+        # Botão para alterar logo (requer senha)
+        ttk.Button(btn_frame, text="Alterar logo (requer senha)", command=self.select_logo).grid(row=0, column=2, padx=(8,0))
         # Label do lucro real
         self.lucro_real_label = ttk.Label(result_frame, text="", style='Header.TLabel')
         self.lucro_real_label.grid(row=2, column=0, pady=(8,0), sticky=(tk.W))
         
         # Carregar custos
         self.load_costs()
+        # Default protected logo path (user-provided)
+        self.default_logo_path = r"G:\Meu Drive\The Fox Company\LOGO LINKEDIN.jpg"
+        # By default reports will use the locked logo. An override is only allowed with the password.
+        self.logo_override_path = None
+        # set initial logo_path to default if it exists
+        if os.path.exists(self.default_logo_path):
+            self.logo_path = self.default_logo_path
+        else:
+            self.logo_path = None
         # aplicar estado inicial do modo markup
         try:
             self._toggle_markup_mode()
@@ -315,11 +324,23 @@ class CalculadoraApp:
 
     def select_logo(self):
         """Permite ao usuário selecionar um arquivo de logo para usar nos relatórios."""
+        # Require password to change the default logo
+        try:
+            pwd = simpledialog.askstring('Senha necessária', 'Insira a senha para alterar o logo:', show='*')
+        except Exception:
+            pwd = None
+        DEFAULT_LOGO_PASSWORD = 'wasdeq123'
+        if not pwd:
+            return
+        if pwd != DEFAULT_LOGO_PASSWORD:
+            messagebox.showerror('Senha incorreta', 'Senha inválida. A alteração do logo foi cancelada.')
+            return
+        # password ok -> allow selecting override logo
         path = filedialog.askopenfilename(filetypes=[('Image files', '*.png;*.jpg;*.jpeg;*.bmp;*.gif')], title='Selecionar logo')
         if not path:
             return
-        self.logo_path = path
-        messagebox.showinfo('Logo selecionado', f'Logo selecionado: {path}')
+        self.logo_override_path = path
+        messagebox.showinfo('Logo alterado', f'Logo alternativo selecionado: {path}')
 
     def export_pdf(self):
         """Exporta o último resultado para PDF via diálogo de salvamento (requer reportlab)."""
@@ -337,8 +358,8 @@ class CalculadoraApp:
             return
         try:
             res = self.last_result
-            # try to find logo: prefer selected path, fallback to ./logo.png
-            logo_path = getattr(self, 'logo_path', None)
+            # Determine logo: prefer password-protected override, then initial default, then ./logo.png
+            logo_path = getattr(self, 'logo_override_path', None) or getattr(self, 'logo_path', None)
             if not logo_path:
                 candidate = os.path.join(os.getcwd(), 'logo.png')
                 if os.path.exists(candidate):
@@ -347,7 +368,7 @@ class CalculadoraApp:
                 from reportlab.lib.pagesizes import letter
                 from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer
                 from reportlab.lib import colors
-                from reportlab.lib.styles import getSampleStyleSheet
+                from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
             except Exception:
                 messagebox.showinfo("Exportar PDF", "Para exportar em PDF instale: pip install reportlab")
                 return
@@ -355,11 +376,16 @@ class CalculadoraApp:
             buf = io.BytesIO()
             doc = SimpleDocTemplate(buf, pagesize=letter, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
             styles = getSampleStyleSheet()
+            # Improve base styles for readability
+            styles.add(ParagraphStyle(name='ReportTitle', parent=styles['Title'], fontSize=20, leading=24, spaceAfter=12))
+            styles.add(ParagraphStyle(name='ReportSub', parent=styles['Normal'], fontSize=12, leading=14, spaceAfter=8))
+            styles.add(ParagraphStyle(name='Metric', parent=styles['Normal'], fontSize=14, leading=16, spaceAfter=6))
+
             story = []
 
             # Header with logo (if available) and title
             logo_width = 80
-            title = Paragraph('<b>Resumo de Precificação</b>', styles['Title'])
+            title = Paragraph('<b>Resumo de Precificação</b>', styles['ReportTitle'])
             header_cells = []
             if logo_path and os.path.exists(logo_path):
                 try:
@@ -378,47 +404,55 @@ class CalculadoraApp:
                     header_cells = [[Paragraph('', styles['Normal']), title]]
             else:
                 header_cells = [[Paragraph('', styles['Normal']), title]]
-            header_table = Table(header_cells, colWidths=[logo_width, 400])
+            header_table = Table(header_cells, colWidths=[logo_width, 420])
             header_table.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (0,0), colors.HexColor('#0078d4')),
-                ('TEXTCOLOR', (0,0), (0,0), colors.white),
-                ('BACKGROUND', (1,0), (1,0), colors.HexColor('#1e1e1e')),
-                ('LEFTPADDING', (0,0), (-1,-1), 8),
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('LEFTPADDING', (0,0), (-1,-1), 6),
+                ('RIGHTPADDING', (0,0), (-1,-1), 6),
             ]))
             story.append(header_table)
+            story.append(Spacer(1, 8))
+
+            # Main highlighted metrics box
+            preco = f"R$ {res.get('preco_venda', 0.0):.2f}"
+            fatur = f"R$ {res.get('valor_faturamento', 0.0):.2f}"
+            lucro = f"R$ {res.get('valor_lucro', 0.0):.2f}"
+            margem = f"{res.get('margem_percentual', 0.0):.2f}%"
+            metrics = [[Paragraph('<b>Preço sugerido</b>', styles['ReportSub']), Paragraph(preco, styles['Metric'])],
+                       [Paragraph('<b>Faturamento</b>', styles['ReportSub']), Paragraph(fatur, styles['Metric'])],
+                       [Paragraph('<b>Lucro líquido</b>', styles['ReportSub']), Paragraph(lucro, styles['Metric'])],
+                       [Paragraph('<b>Margem</b>', styles['ReportSub']), Paragraph(margem, styles['Metric'])]]
+            metrics_tbl = Table(metrics, colWidths=[260, 160])
+            metrics_tbl.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,-1), colors.whitesmoke),
+                ('BOX', (0,0), (-1,-1), 0.5, colors.grey),
+                ('INNERGRID', (0,0), (-1,-1), 0.25, colors.grey),
+                ('LEFTPADDING', (0,0), (-1,-1), 8),
+                ('RIGHTPADDING', (0,0), (-1,-1), 8),
+            ]))
+            story.append(metrics_tbl)
             story.append(Spacer(1, 12))
 
-            # Main metrics
-            data = [['Campo', 'Valor']]
-            data.append(['Preço sugerido', f"R$ {res.get('preco_venda', 0.0):.2f}"])
-            data.append(['Valor faturamento', f"R$ {res.get('valor_faturamento', 0.0):.2f}"])
-            data.append(['Valor lucro', f"R$ {res.get('valor_lucro', 0.0):.2f}"])
-            data.append(['Margem', f"{res.get('margem_percentual', 0.0):.2f}%"]) 
-            tbl = Table(data, colWidths=[220, 180])
-            tbl.setStyle(TableStyle([
+            # Breakdown table with alternating row colors and right-aligned values
+            bd = [['Quebra', 'Valor']]
+            for k, v in res.get('breakdown', {}).items():
+                bd.append([str(k), f"R$ {v}"])
+            bd_tbl = Table(bd, colWidths=[300, 120])
+            bd_style = TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2d2d2d')),
                 ('TEXTCOLOR', (0,0), (-1,0), colors.white),
                 ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
                 ('ALIGN', (1,1), (-1,-1), 'RIGHT'),
-                ('INNERGRID', (0,0), (-1,-1), 0.25, colors.grey),
+                ('INNERGRID', (0,0), (-1,-1), 0.25, colors.lightgrey),
                 ('BOX', (0,0), (-1,-1), 0.5, colors.grey),
-            ]))
-            story.append(tbl)
-            story.append(Spacer(1, 12))
-
-            # Breakdown table
-            bd = [['Quebra', 'Valor']]
-            for k, v in res.get('breakdown', {}).items():
-                bd.append([str(k), f"R$ {v}"])
-            bd_tbl = Table(bd, colWidths=[220, 180])
-            bd_tbl.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2d2d2d')),
-                ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-                ('INNERGRID', (0,0), (-1,-1), 0.25, colors.grey),
-                ('BOX', (0,0), (-1,-1), 0.5, colors.grey),
-            ]))
+                ('LEFTPADDING', (0,0), (-1,-1), 6),
+                ('RIGHTPADDING', (0,0), (-1,-1), 6),
+            ])
+            # zebra striping
+            for i in range(1, len(bd)):
+                if i % 2 == 1:
+                    bd_style.add('BACKGROUND', (0,i), (-1,i), colors.whitesmoke)
+            bd_tbl.setStyle(bd_style)
             story.append(bd_tbl)
 
             # Add matplotlib charts: composition and unidades necessárias

@@ -187,21 +187,25 @@ with col3:
             from reportlab.lib.pagesizes import letter
             from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer
             from reportlab.lib import colors
-            from reportlab.lib.styles import getSampleStyleSheet
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
             def build_pdf_bytes(res):
                 buf = io.BytesIO()
                 doc = SimpleDocTemplate(buf, pagesize=letter, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
                 styles = getSampleStyleSheet()
+                styles.add(ParagraphStyle(name='ReportTitle', parent=styles['Title'], fontSize=20, leading=24, spaceAfter=10))
+                styles.add(ParagraphStyle(name='ReportSub', parent=styles['Normal'], fontSize=11, leading=14, spaceAfter=6))
+                styles.add(ParagraphStyle(name='Metric', parent=styles['Normal'], fontSize=13, leading=15, spaceAfter=4))
                 story = []
+
                 # Header with optional logo and title
                 logo_width = 80
-                title = Paragraph('<b>Resumo de Precificação</b>', styles['Title'])
+                title = Paragraph('<b>Resumo de Precificação</b>', styles['ReportTitle'])
                 header_cells = []
-                logo_path = os.path.join(os.getcwd(), 'logo.png')
-                if os.path.exists(logo_path):
+                logo_path_local = os.path.join(os.getcwd(), 'logo.png')
+                if os.path.exists(logo_path_local):
                     try:
-                        img = Image.open(logo_path)
+                        img = Image.open(logo_path_local)
                         aspect = img.height / img.width
                         img_w = logo_width
                         img_h = int(img_w * aspect)
@@ -215,55 +219,63 @@ with col3:
                         header_cells = [[Paragraph('', styles['Normal']), title]]
                 else:
                     header_cells = [[Paragraph('', styles['Normal']), title]]
-                header_table = Table(header_cells, colWidths=[logo_width, 400])
+
+                header_table = Table(header_cells, colWidths=[logo_width, 420])
                 header_table.setStyle(TableStyle([
-                    ('BACKGROUND', (0,0), (0,0), colors.HexColor('#0078d4')),
-                    ('TEXTCOLOR', (0,0), (0,0), colors.white),
-                    ('BACKGROUND', (1,0), (1,0), colors.HexColor('#1e1e1e')),
-                    ('LEFTPADDING', (0,0), (-1,-1), 8),
                     ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                    ('LEFTPADDING', (0,0), (-1,-1), 6),
+                    ('RIGHTPADDING', (0,0), (-1,-1), 6),
                 ]))
                 story.append(header_table)
+                story.append(Spacer(1, 8))
+
+                # Key metrics highlighted
+                preco = f"R$ {res.get('preco_venda', 0.0):.2f}"
+                fatur = f"R$ {res.get('valor_faturamento', 0.0):.2f}"
+                lucro = f"R$ {res.get('valor_lucro', 0.0):.2f}"
+                margem = f"{res.get('margem_percentual', 0.0):.2f}%"
+                metrics = [[Paragraph('<b>Preço sugerido</b>', styles['ReportSub']), Paragraph(preco, styles['Metric'])],
+                           [Paragraph('<b>Faturamento</b>', styles['ReportSub']), Paragraph(fatur, styles['Metric'])],
+                           [Paragraph('<b>Lucro líquido</b>', styles['ReportSub']), Paragraph(lucro, styles['Metric'])],
+                           [Paragraph('<b>Margem</b>', styles['ReportSub']), Paragraph(margem, styles['Metric'])]]
+                metrics_tbl = Table(metrics, colWidths=[300, 140])
+                metrics_tbl.setStyle(TableStyle([
+                    ('BACKGROUND', (0,0), (-1,-1), colors.whitesmoke),
+                    ('BOX', (0,0), (-1,-1), 0.5, colors.grey),
+                    ('INNERGRID', (0,0), (-1,-1), 0.25, colors.lightgrey),
+                    ('LEFTPADDING', (0,0), (-1,-1), 8),
+                    ('RIGHTPADDING', (0,0), (-1,-1), 8),
+                ]))
+                story.append(metrics_tbl)
                 story.append(Spacer(1, 12))
 
-                # Main metrics
-                data = [['Campo', 'Valor']]
-                data.append(['Preço sugerido', f"R$ {res.get('preco_venda', 0.0):.2f}"])
-                data.append(['Valor faturamento', f"R$ {res.get('valor_faturamento', 0.0):.2f}"])
-                data.append(['Valor lucro', f"R$ {res.get('valor_lucro', 0.0):.2f}"])
-                data.append(['Margem', f"{res.get('margem_percentual', 0.0):.2f}%"]) 
-                tbl = Table(data, colWidths=[220, 180])
-                tbl.setStyle(TableStyle([
+                # Breakdown table with zebra striping and right-aligned numbers
+                bd = [['Quebra', 'Valor']]
+                for k, v in res.get('breakdown', {}).items():
+                    bd.append([str(k), f"R$ {v}"])
+                bd_tbl = Table(bd, colWidths=[320, 120])
+                bd_style = TableStyle([
                     ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2d2d2d')),
                     ('TEXTCOLOR', (0,0), (-1,0), colors.white),
                     ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
                     ('ALIGN', (1,1), (-1,-1), 'RIGHT'),
-                    ('INNERGRID', (0,0), (-1,-1), 0.25, colors.grey),
+                    ('INNERGRID', (0,0), (-1,-1), 0.25, colors.lightgrey),
                     ('BOX', (0,0), (-1,-1), 0.5, colors.grey),
-                ]))
-                story.append(tbl)
-                story.append(Spacer(1, 12))
-
-                # Breakdown table
-                bd = [['Quebra', 'Valor']]
-                for k, v in res.get('breakdown', {}).items():
-                    bd.append([str(k), f"R$ {v}"])
-                bd_tbl = Table(bd, colWidths=[220, 180])
-                bd_tbl.setStyle(TableStyle([
-                    ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2d2d2d')),
-                    ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-                    ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-                    ('INNERGRID', (0,0), (-1,-1), 0.25, colors.grey),
-                    ('BOX', (0,0), (-1,-1), 0.5, colors.grey),
-                ]))
+                    ('LEFTPADDING', (0,0), (-1,-1), 6),
+                    ('RIGHTPADDING', (0,0), (-1,-1), 6),
+                ])
+                for i in range(1, len(bd)):
+                    if i % 2 == 1:
+                        bd_style.add('BACKGROUND', (0,i), (-1,i), colors.whitesmoke)
+                bd_tbl.setStyle(bd_style)
                 story.append(bd_tbl)
 
                 # Add matplotlib charts: composition and units needed
                 try:
                     custos = res.get('custos_diretos_por_venda', 0.0) + res.get('taxas_totais_em_reais', 0.0)
-                    lucro = res.get('valor_lucro', 0.0)
+                    lucro_val = res.get('valor_lucro', 0.0)
                     labels = ['Custos', 'Lucro']
-                    vals = [max(custos, 0.0), max(lucro, 0.0)]
+                    vals = [max(custos, 0.0), max(lucro_val, 0.0)]
                     fig1, ax1 = plt.subplots(figsize=(4, 3))
                     ax1.pie(vals, labels=labels, autopct='%1.1f%%', colors=['#4c72b0', '#dd8452'])
                     ax1.set_title('Composição por venda')
